@@ -7,6 +7,7 @@ import lightning as L
 import torchmetrics
 
 from torch.utils.data import DataLoader, random_split
+from lightning.pytorch.loggers import TensorBoardLogger
 
 from utils import read_processed_data, NewsDataset
 
@@ -62,32 +63,37 @@ class WideAndDeepModel(L.LightningModule):
         self.log(f'{prefix}/click_auc', self.auc(y_hat, y_click), on_epoch=True)
     
 def main(args):
-    doc_info, user_info, data = read_processed_data('dataset/processed_data', small=args.debug)
+    doc_info, user_info, data = read_processed_data('dataset/processed_data', args.dataset)
     dataset = NewsDataset(data, doc_info, user_info)
     
+    # Split train validation set
     train_set_size = int(len(dataset) * 0.8)
     valid_set_size = len(dataset) - train_set_size
     train_set, valid_set = random_split(dataset, [train_set_size, valid_set_size])
-    
     print(f'train size: {len(train_set)}, test size: {len(valid_set)}')
 
-    train_loader = DataLoader(train_set, batch_size=256, num_workers=8, persistent_workers=True)
-    valid_loader = DataLoader(valid_set, batch_size=256, num_workers=8, persistent_workers=True)
+    # Create dataloader
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, num_workers=8, persistent_workers=True)
+    valid_loader = DataLoader(valid_set, batch_size=args.batch_size, num_workers=8, persistent_workers=True)
     
-    print(f'u_size: {len(dataset.user2index), len(user_info)}, g_size: {len(dataset.doc2index), len(doc_info)}')
+    # Build model
+    print(f'u_size: {len(dataset.user2index), len(user_info)}, g_size: {len(dataset.doc2index), len(doc_info)}')    
     
     model = WideAndDeepModel(u_size=len(user_info), 
                              g_size=len(doc_info),
                              metadata_dim=dataset.feat_dict['metadata'].shape[1],
                              embed_dim=16,
                              output_dim=1)
-    trainer = L.Trainer(max_epochs=10, accelerator="cpu",)
+    trainer = L.Trainer(max_epochs=args.epochs, 
+                        accelerator="cpu")
     trainer.fit(model, train_loader, valid_loader)
     
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', action='store_true', help='Use the small dataset for debugging.')
+    parser.add_argument('--dataset', type=str, default='small', help='Dataset for training. [small, medium, full]')
+    parser.add_argument('--batch-size', type=int, default=128, help='Batch size for the model')
+    parser.add_argument('--epochs', type=int, default=5, help='Batch size for the model')
     args = parser.parse_args()
     
     main(args)

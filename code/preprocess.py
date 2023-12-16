@@ -1,3 +1,4 @@
+import argparse
 import os
 from datetime import datetime
 from tqdm import tqdm
@@ -129,5 +130,20 @@ def process_test_data(df):
     return df
 
 
+def create_train_subset(datadir):
+    print('Reading full data...')
+    train_data = pd.read_csv(os.path.join(datadir, 'train_data_proceessed.csv'))
+    print(f'Creating small dataset... Size: {100000}')
+    train_data.sample(100000).to_csv(os.path.join(datadir, 'train_data_proceessed_small.csv'), index=False)
+    print(f'Creating small dataset... Size: {int(0.1 * len(train_data))}')
+    train_data.sample(int(0.1 * len(train_data))).to_csv(os.path.join(datadir, 'train_data_proceessed_medium.csv'), index=False)
+
 if __name__ == '__main__':
-    process_news_dataset('dataset/raw_data', 'dataset/processed_data')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--subset', action='store_true', help='Create subset of the training data.')
+    args = parser.parse_args()
+    
+    if args.subset:
+        create_train_subset('dataset/processed_data')
+    else:
+        process_news_dataset('dataset/raw_data', 'dataset/processed_data')

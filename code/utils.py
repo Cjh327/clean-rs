@@ -44,15 +44,20 @@ class NewsDataset(Dataset):
         return len(self.feat_dict['uid'])
 
 
-def read_processed_data(datadir, small=False):
+def read_processed_data(datadir, dataset_type):
     doc_info = pd.read_csv(os.path.join(datadir, 'doc_info_proceessed.csv'), low_memory=False)
     user_info = pd.read_csv(os.path.join(datadir, 'user_info_proceessed.csv'))
-    if small:
+    if dataset_type == 'small':
         print('Small data set is used.')
         train_data = pd.read_csv(os.path.join(datadir, 'train_data_proceessed_small.csv'))
-    else:
+    elif dataset_type == 'medium':
+        print('Medium data set is used.')
+        train_data = pd.read_csv(os.path.join(datadir, 'train_data_proceessed_medium.csv'))
+    elif dataset_type =='full':
+        print('Full data set is used.')
         train_data = pd.read_csv(os.path.join(datadir, 'train_data_proceessed.csv'))
-        train_data.sample(100000).to_csv(os.path.join(datadir, 'train_data_proceessed_small.csv'), index=False)
+    else:
+        raise ValueError('Invalid dataset type. [small, medium, full]')
     
     print(doc_info.shape, user_info.shape, train_data.shape)
     
