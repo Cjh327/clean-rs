@@ -1,23 +1,47 @@
 import os
 import pandas as pd
+import numpy as np
 from torch.utils.data import Dataset
 
 
 class NewsDataset(Dataset):
     def __init__(self, data, doc_info, user_info):
-        self.features = self.generate_features(data, doc_info, user_info).values
-        self.click_label = data['click'].values
-        self.duration_label = data['duration'].values
+        click_counts = data['click'].value_counts()
+        print(click_counts)
+        print(f'Click pos ratio: {click_counts[1] / (click_counts[0] + click_counts[1])}')
+        
+        data, self.user2index, self.doc2index = self.transform_ids(data, doc_info, user_info)
+        self.feat_dict = self.generate_features(data, doc_info, user_info)
+        self.label_dict = self.generate_labels(data)
+        
+    def transform_ids(self, data, doc_info, user_info):
+        df_reset = user_info['user_id'].drop_duplicates().reset_index()
+        user2index = df_reset.set_index('user_id')['index'].to_dict()
+        
+        df_reset = doc_info['article_id'].drop_duplicates().reset_index()
+        doc2index = df_reset.set_index('article_id')['index'].to_dict()
+        
+        data['user_id'] = data['user_id'].map(user2index)
+        data['article_id'] = data['article_id'].map(doc2index)
+        
+        return data, user2index, doc2index
         
     def generate_features(self, data, doc_info, user_info):
-        features = data[['user_id', 'article_id', 'expo_time', 'net_status', 'flush_nums', 'exop_position']]
-        return features
-
+        uids = data['user_id'].values.astype(int)
+        gids = data['article_id'].values.astype(int)
+        metadata = data[['net_status', 'flush_nums', 'exop_position']].values.astype(np.float32)
+        return {'uid': uids, 'gid': gids, 'metadata': metadata}
+    
+    def generate_labels(self, data):
+        click = data['click'].values.astype(np.float32)
+        duration = data['duration'].values.astype(np.float32)
+        return {'click': click, 'duration': duration}
+    
     def __getitem__(self, idx):
-        return self.features[idx], self.click_label[idx], self.duration_label[idx]
-
+        return self.feat_dict['uid'][idx], self.feat_dict['gid'][idx], self.feat_dict['metadata'][idx], self.label_dict['click'][idx]
+    
     def __len__(self):
-        return len(self.features)
+        return len(self.feat_dict['uid'])
 
 
 def read_processed_data(datadir, small=False):

@@ -1,56 +1,93 @@
+import argparse
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning as L 
+import torchmetrics
 
 from torch.utils.data import DataLoader, random_split
 
 from utils import read_processed_data, NewsDataset
 
 class WideAndDeepModel(L.LightningModule):
-    def __init__(self, wide_input_dim, deep_input_dim, output_dim, lr=1e-3):
+    def __init__(self, u_size, g_size, metadata_dim, embed_dim, output_dim, lr=1e-3):
         super().__init__()
-        self.wide = nn.Linear(wide_input_dim, output_dim)
+        self.u_embed = nn.Embedding(u_size, embed_dim)
+        self.g_embed = nn.Embedding(g_size, embed_dim)
+        self.wide = nn.Linear(embed_dim * 2 + metadata_dim, output_dim)
         self.deep = nn.Sequential(
-                        nn.Linear(deep_input_dim, 64),
+                        nn.Linear(embed_dim * 2 + metadata_dim, 64),
                         nn.ReLU(),
                         nn.Linear(64, output_dim))
+        self.sogmoid = nn.Sigmoid()
         self.lr = lr
-    
-    def forward(self, X_wide, X_deep):
+        
+        self.accuracy = torchmetrics.classification.BinaryAccuracy(threshold=0.5)
+        self.auc = torchmetrics.classification.BinaryAUROC()
+
+    def forward(self, uid, gid, metadata):
+        u_embedding = self.u_embed(uid)
+        g_embedding = self.g_embed(gid)
+        
+        X_wide = torch.cat([u_embedding, g_embedding, metadata], -1)
+        X_deep = torch.cat([u_embedding, g_embedding, metadata], -1)
+        
         wide_output = self.wide(X_wide)
         deep_output = self.deep(X_deep)
-        return wide_output + deep_output
+        y_out = self.sogmoid(wide_output + deep_output)
+        return y_out
     
     def training_step(self, batch, batch_idx):
-        X_wide, X_deep, y = batch
-        y_hat = self(X_wide, X_deep)
-        loss = F.mse_loss(y_hat, y)
-        self.log('train_loss', loss)
+        uid, gid, metadata, y_click = batch # Lightning has turned the batch to tensor when reading dataloader
+        y_hat = self(uid, gid, metadata)[:, 0]
+        loss = F.binary_cross_entropy(y_hat, y_click)
+        self.log_metrics('valid', y_hat, y_click)
+        self.log('train/click_bce_loss', loss, prog_bar=True, on_epoch=True)
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        uid, gid, metadata, y_click = batch
+        y_hat = self(uid, gid, metadata)[:, 0]
+        loss = F.binary_cross_entropy(y_hat, y_click)
+        self.log_metrics('valid', y_hat, y_click)
+        self.log('valid/click_bce_loss', loss, on_epoch=True)
         return loss
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
     
-
-def main():
-    doc_info, user_info, data = read_processed_data('dataset/processed_data', small=True)
+    def log_metrics(self, prefix, y_hat, y_click):
+        self.log(f'{prefix}/click_acc', self.accuracy(y_hat, y_click), on_epoch=True)
+        self.log(f'{prefix}/click_auc', self.auc(y_hat, y_click), on_epoch=True)
+    
+def main(args):
+    doc_info, user_info, data = read_processed_data('dataset/processed_data', small=args.debug)
     dataset = NewsDataset(data, doc_info, user_info)
     
     train_set_size = int(len(dataset) * 0.8)
     valid_set_size = len(dataset) - train_set_size
-    seed = torch.Generator().manual_seed(42)
-    train_set, valid_set = random_split(dataset, [train_set_size, valid_set_size], generator=seed)
+    train_set, valid_set = random_split(dataset, [train_set_size, valid_set_size])
     
-    print(len(train_set), len(valid_set))
+    print(f'train size: {len(train_set)}, test size: {len(valid_set)}')
 
-    # train_dataloader = DataLoader(TensorDataset(wide_data, deep_data, target), batch_size=64)
-
-    # model = WideAndDeepModel(wide_data.size(1), deep_data.size(1), 1)
-    # trainer = L.Trainer(max_epochs=10)
-    # trainer.fit(model, train_dataloader)
+    train_loader = DataLoader(train_set, batch_size=256, num_workers=8, persistent_workers=True)
+    valid_loader = DataLoader(valid_set, batch_size=256, num_workers=8, persistent_workers=True)
     
-
+    print(f'u_size: {len(dataset.user2index), len(user_info)}, g_size: {len(dataset.doc2index), len(doc_info)}')
+    
+    model = WideAndDeepModel(u_size=len(user_info), 
+                             g_size=len(doc_info),
+                             metadata_dim=dataset.feat_dict['metadata'].shape[1],
+                             embed_dim=16,
+                             output_dim=1)
+    trainer = L.Trainer(max_epochs=10, accelerator="cpu",)
+    trainer.fit(model, train_loader, valid_loader)
+    
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true', help='Use the small dataset for debugging.')
+    args = parser.parse_args()
+    
+    main(args)

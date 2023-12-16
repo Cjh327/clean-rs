@@ -162,3 +162,4 @@ cython_debug/
 
 dataset
 .DS_Store
+lightning_logs/
