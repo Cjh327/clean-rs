@@ -29,7 +29,7 @@ class NewsDataset(Dataset):
     def generate_features(self, data, doc_info, user_info):
         uids = data['user_id'].values.astype(int)
         gids = data['article_id'].values.astype(int)
-        metadata = data[['net_status', 'flush_nums', 'exop_position']].values.astype(np.float32)
+        metadata = data[['net_status', 'flush_nums', 'expo_position']].values.astype(np.float32)
         return {'uid': uids, 'gid': gids, 'metadata': metadata}
     
     def generate_labels(self, data):
