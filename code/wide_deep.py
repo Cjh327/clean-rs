@@ -85,15 +85,16 @@ def main(args):
                              embed_dim=16,
                              output_dim=1)
     trainer = L.Trainer(max_epochs=args.epochs, 
-                        accelerator="cpu")
+                        accelerator="cpu",
+                        default_root_dir=f"outputs/wide_and_deep/{args.dataset}")
     trainer.fit(model, train_loader, valid_loader)
     
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='small', help='Dataset for training. [small, medium, full]')
-    parser.add_argument('--batch-size', type=int, default=128, help='Batch size for the model')
-    parser.add_argument('--epochs', type=int, default=5, help='Batch size for the model')
+    parser.add_argument('--batch-size', type=int, default=512, help='Batch size for the model')
+    parser.add_argument('--epochs', type=int, default=3, help='Batch size for the model')
     args = parser.parse_args()
     
     main(args)
