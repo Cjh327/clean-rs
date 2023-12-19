@@ -1,5 +1,6 @@
 import argparse
 
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +8,6 @@ import lightning as L
 import torchmetrics
 
 from torch.utils.data import DataLoader, random_split
-from lightning.pytorch.loggers import TensorBoardLogger
 
 from utils import read_processed_data, NewsDataset
 
@@ -88,13 +88,25 @@ def main(args):
                         accelerator="cpu",
                         default_root_dir=f"outputs/wide_and_deep/{args.dataset}")
     trainer.fit(model, train_loader, valid_loader)
+    result = trainer.validate(model, valid_loader)
+    print(result)
     
+    result_df = {'algorithm': ['Wide&Deep'],
+                 'dataset': [args.dataset],
+                 'epochs': [args.epochs],
+                 'batch_size': [args.batch_size]}
+    for k in result[0]:
+        result_df[k] = [result[0][k]]
+    result_df = pd.DataFrame(result_df)
+    result_df.to_csv('results.csv', mode='a', index=False, header=False)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='small', help='Dataset for training. [small, medium, full]')
-    parser.add_argument('--batch-size', type=int, default=512, help='Batch size for the model')
-    parser.add_argument('--epochs', type=int, default=3, help='Batch size for the model')
+    parser.add_argument('--batch-size', type=int, default=256, help='Batch size for the model')
+    parser.add_argument('--epochs', type=int, default=2, help='Batch size for the model')
+    parser.add_argument('--write-result', action='store_true', help='Write result to file')
     args = parser.parse_args()
     
     main(args)
